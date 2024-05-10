@@ -2,80 +2,171 @@
 
 const express = require("express");
 const bodyParser = require("body-parser");
+const mongoose = require("mongoose);
 const ejs = require("ejs");
 const _ = require("lodash");
 
-const homeStartingContent = "Lacus vel facilisis volutpat est velit egestas dui id ornare. Semper auctor neque vitae tempus quam. Sit amet cursus sit amet dictum sit amet justo. Viverra tellus in hac habitasse. Imperdiet proin fermentum leo vel orci porta. Donec ultrices tincidunt arcu non sodales neque sodales ut. Mattis molestie a iaculis at erat pellentesque adipiscing. Magnis dis parturient montes nascetur ridiculus mus mauris vitae ultricies. Adipiscing elit ut aliquam purus sit amet luctus venenatis lectus. Ultrices vitae auctor eu augue ut lectus arcu bibendum at. Odio euismod lacinia at quis risus sed vulputate odio ut. Cursus mattis molestie a iaculis at erat pellentesque adipiscing.";
-const aboutContent = "Hac habitasse platea dictumst vestibulum rhoncus est pellentesque. Dictumst vestibulum rhoncus est pellentesque elit ullamcorper. Non diam phasellus vestibulum lorem sed. Platea dictumst quisque sagittis purus sit. Egestas sed sed risus pretium quam vulputate dignissim suspendisse. Mauris in aliquam sem fringilla. Semper risus in hendrerit gravida rutrum quisque non tellus orci. Amet massa vitae tortor condimentum lacinia quis vel eros. Enim ut tellus elementum sagittis vitae. Mauris ultrices eros in cursus turpis massa tincidunt dui.";
-const contactContent = "Scelerisque eleifend donec pretium vulputate sapien. Rhoncus urna neque viverra justo nec ultrices. Arcu dui vivamus arcu felis bibendum. Consectetur adipiscing elit duis tristique. Risus viverra adipiscing at in tellus integer feugiat. Sapien nec sagittis aliquam malesuada bibendum arcu vitae. Consequat interdum varius sit amet mattis. Iaculis nunc sed augue lacus. Interdum posuere lorem ipsum dolor sit amet consectetur adipiscing elit. Pulvinar elementum integer enim neque. Ultrices gravida dictum fusce ut placerat orci nulla. Mauris in aliquam sem fringilla ut morbi tincidunt. Tortor posuere ac ut consequat semper viverra nam libero.";
-
 const app = express();
+const port = process.env.PORT || 3000;
 
-app.set('view engine', 'ejs');
-
-app.use(bodyParser.urlencoded({extended: true}));
+app.set("view engine", "ejs");
+app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
 
-let posts=[];
+mongoose.connect("mongodb+srv://kreidyde:d81eF7p3PaJPm2fK@cluster0.ucry92v.mongodb.net/todolistDB");
 
-app.get("/", function(req, res){
+const itemsSchema = {
+  name: String
+};
 
-res.render("home", {
-  homeContent: homeStartingContent,
-  posts: posts
+const Item = mongoose.model("Item", itemsSchema);
+
+const item1 = new Item({
+  name: "Complete the coding challenge"
 });
 
-});''
-
-app.get("/about", function(req, res){
-
-res.render("about", {about: aboutContent});
-
+const item2 = new Item({
+  name: "Work on your GED Science today"
 });
 
-app.get("/contact", function(req, res){
-
-  res.render("contact", {contact: contactContent});
+const item3 = new Item({
+  name: "Meditate and do your Gratitude exercises"
 });
 
-app.get("/compose", function(req, res){
+const defaultItems = [item1, item2, item3];
 
-  res.render("compose");
+const listSchema = {
+  name: String,
+  items: [itemsSchema]
+};
 
-});
+const List = mongoose.model("List", listSchema);
 
-app.post("/compose", function(req, res){
+// Function to insert default items if no items are found
+const insertDefaultItems = async () => {
+  const count = await Item.countDocuments();
+  if (count === 0) {
+    Item.insertMany(defaultItems)
+      .then(() => console.log("Successfully saved default items to DB."))
+      .catch(err => console.log(err));
+  }
+};
 
-  const post = {
-    composeTitle: req.body.postTitle,
-    composeBody: req.body.postBody
-  };
-  posts.push(post);
+insertDefaultItems();
 
-res.redirect("/");
-});
-
-app.get("/posts/:postName", function(req, res){
-
-const requestedTitle = _.lowerCase(req.params.postName);
-
-posts.forEach(function(post){
-  const storedTitle = _.lowerCase(post.composeTitle);
-  if (storedTitle === requestedTitle) {
-    res.render("post", {
-      title: post.composeTitle,
-      content: post.composeBody
-
+let workItems = [];
+let lastDate;
+let day;
+app.get("/", async (req, res) => {
+  try {
+    const foundItems = await Item.find({});
+    const now = new Date();
+    const options = {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    };
+    const day = now.toLocaleDateString("en-US", options);
+    res.render("list.ejs", {
+      listTitle: day,
+      newListItems: foundItems
     });
-  } 
+  } catch (err) {
+    console.log(err);
+    res.status(500).send("Error retrieving items from database.");
+  }
+});
+
+app.get("/:customListName", function(req, res){
+  const customListName = _.capitalize(req.params.customListName);
+
+  List.findOne({name: customListName})
+    .then(foundList => {
+      if (!foundList){
+       //Create a new list
+       const list = new List({
+        name: customListName,
+        items: defaultItems
+      });
+    
+      list.save();
+      res.redirect("/" + customListName);
+      } else {
+        //Show an existing list
+        res.render("list", {listTitle: foundList.name, newListItems: foundList.items});
+      }
+    })
+    .catch(err => {
+      console.error("Error:", err);
+    });
+
+});
+
+
+app.post("/", async (req, res) => {
+  try {
+    const itemName = req.body.newItem;
+    const listName = req.body.list;
+
+    const item = new Item({
+      name: itemName
+    });
+
+    if (listName === day) {
+      await item.save();
+      res.redirect("/");
+    } else {
+      const foundList = await List.findOne({ name: listName });
+      if (foundList) {
+        foundList.items.push(item);
+        await foundList.save();
+        res.redirect("/" + listName);
+      } else {
+        console.log("List not found.");
+        res.redirect("/");
+      }
+    }
+  } catch (error) {
+    console.error("Error:", error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
+
+app.post('/delete', async (req, res) => {
+  try {
+    const checkedItemId = req.body.checkbox;
+    const listName = req.body.listName;
+
+    if (listName === day) {
+      await Item.findByIdAndDelete(checkedItemId);
+      res.redirect('/');
+    } else {
+      const updatedList = await List.findOneAndUpdate(
+        { name: listName },
+        { $pull: { items: { _id: checkedItemId } } },
+        { new: true }
+      );
+      if (!updatedList) {
+        console.log("List not found.");
+        res.redirect('/');
+      } else {
+        res.redirect('/' + listName);
+      }
+    }
+  } catch (error) {
+    console.error("Error:", error);
+    res.status(500).send("Internal Server Error");
+  }
 });
 
 
 
+app.post("/work", (req, res) => {
+  const item = req.body.newItem;
+  workItems.push(item);
+  res.redirect("/work");
 });
-
-
-
 
 app.listen(3000, function() {
   console.log("Server running on P-3K ASAP");
