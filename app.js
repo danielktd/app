@@ -1,10 +1,9 @@
 //jshint esversion:6
-
-const express = require("express");
-const bodyParser = require("body-parser");
-const mongoose = require("mongoose);
-const ejs = require("ejs");
-const _ = require("lodash");
+import express from "express";
+import bodyParser from "body-parser";
+import mongoose from "mongoose";
+import ejs from "ejs";
+import _ from "lodash";
 
 const app = express();
 const port = process.env.PORT || 3000;
